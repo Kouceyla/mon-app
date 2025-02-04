@@ -1,0 +1,45 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | base64 --decode > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Connect to server and deploy
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          set -e  # Arrêter l'exécution si une commande échoue
+          
+          # Mettre à jour les paquets
+          sudo apt-get update -y
+          sudo apt-get install -y openssh-client
+
+          # Aller dans le répertoire de l’application
+          cd ${{ secrets.WORK_DIR }}
+
+          # Pull la dernière version du code
+          git pull origin main
+
+          # Redémarrer le conteneur Docker
+          docker-compose down
+          docker-compose build --no-cache
+          docker-compose up -d
+
+          # Nettoyer les fichiers inutiles
+          rm -rf ~/.ssh
+          EOF
