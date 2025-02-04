@@ -15,31 +15,33 @@ jobs:
 
       - name: Setup SSH Key
         run: |
+          # Créer et configurer le dossier SSH
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Déchiffrer la clé privée SSH et lui attribuer les permissions correctes
           echo "${{ secrets.SSH_PRIVATE_KEY }}" | base64 --decode > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+          # Ajouter l'hôte SSH à known_hosts pour éviter les erreurs de vérification
+          ssh-keyscan -t rsa -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts || true
 
       - name: Connect to server and deploy
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           set -e  # Arrêter l'exécution si une commande échoue
           
-          # Mettre à jour les paquets
+          # Mettre à jour les paquets et installer openssh-client
           sudo apt-get update -y
           sudo apt-get install -y openssh-client
 
-          # Aller dans le répertoire de l’application
+          # Aller dans le répertoire de l’application et récupérer les dernières modifications
           cd ${{ secrets.WORK_DIR }}
-
-          # Pull la dernière version du code
           git pull origin main
 
-          # Redémarrer le conteneur Docker
+          # Redémarrer proprement le conteneur Docker
           docker-compose down
           docker-compose build --no-cache
           docker-compose up -d
 
-          # Nettoyer les fichiers inutiles
-          rm -rf ~/.ssh
-          EOF
+          # Nettoyer les fichiers SSH tempor
