@@ -3,45 +3,52 @@ name: Deploy to AWS
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup SSH Key
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18  # Mets la version adaptée
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test  # Exécute les tests, si ça échoue, le déploiement s'arrête
+
+      - name: Set up SSH
+        if: success()  # Exécute cette étape seulement si les tests réussissent
         run: |
-          # Créer et configurer le dossier SSH
           mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          # Déchiffrer la clé privée SSH et lui attribuer les permissions correctes
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" | base64 --decode > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-          # Ajouter l'hôte SSH à known_hosts pour éviter les erreurs de vérification
-          ssh-keyscan -t rsa -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts || true
-
-      - name: Connect to server and deploy
+      - name: Deploy application
+        if: success()  # Exécute cette étape seulement si les tests réussissent
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-          set -e  # Arrêter l'exécution si une commande échoue
-          
-          # Mettre à jour les paquets et installer openssh-client
-          sudo apt-get update -y
-          sudo apt-get install -y openssh-client
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<EOF
+            # Aller dans le répertoire de l'application
+            cd /home/raphaelserv/mon-app
 
-          # Aller dans le répertoire de l’application et récupérer les dernières modifications
-          cd ${{ secrets.WORK_DIR }}
-          git pull origin main
+            # Mettre à jour le code depuis le dépôt Git
+            git pull origin master
 
-          # Redémarrer proprement le conteneur Docker
-          docker-compose down
-          docker-compose build --no-cache
-          docker-compose up -d
+            # Arrêter et supprimer le conteneur existant
+            docker-compose down
 
-          # Nettoyer les fichiers SSH tempor
+            # Supprimer les images Docker obsolètes
+            docker system prune -af
+            docker image prune -af
+
+            # Recréer et redémarrer le conteneur
+            docker-compose up -d --build
+          EOF
