@@ -37,10 +37,10 @@ jobs:
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<EOF
             # Aller dans le répertoire de l'application
-            cd /home/booba/mon-app
+            cd /home/booba/Projet/mon-app
 
             # Mettre à jour le code depuis le dépôt Git
-            git pull origin master
+            git pull origin main
 
             # Arrêter et supprimer le conteneur existant
             docker-compose down
